@@ -27,7 +27,7 @@ else:
     password = getpass.getpass("Password: ")
     ssh.connect(host, username=username, password=password)
 
-# --- Open interactive shell ---
+# --- Open persistent shell ---
 channel = ssh.get_transport().open_session()
 channel.get_pty()
 channel.invoke_shell()
@@ -46,22 +46,11 @@ server_prompt = ps1_output.strip().splitlines()[-1]
 timestamp = datetime.now().strftime("%Y-%m-%d-%H%M-%S")
 session_dir = f"~/.gash/session-{timestamp}"
 channel.send(f"mkdir -p {session_dir}\n".encode())
-time.sleep(0.2)
+time.sleep(0.1)
 print(f"Session directory: {session_dir}")
 
 # --- Helper functions ---
-def wait_for_status_file(ssh, status_file):
-    while True:
-        stdin, stdout, stderr = ssh.exec_command(f"test -f {status_file} && echo ready || echo wait")
-        if stdout.read().decode().strip() == "ready":
-            break
-        time.sleep(0.1)
-
-def read_file(ssh, remote_file):
-    stdin, stdout, stderr = ssh.exec_command(f"cat {remote_file}")
-    return stdout.read().decode()
-
-def run_test(cmd_number, description, command, expected_stdout=None, expected_stderr=None, expected_exit=None):
+def run_command(cmd_number, description, command, expected_stdout=None, expected_stderr=None, expected_exit=None):
     print(f"\n--- Test #{cmd_number}: {description} ---")
     
     hist_file = f"{session_dir}/history-cmd{cmd_number}"
@@ -69,31 +58,46 @@ def run_test(cmd_number, description, command, expected_stdout=None, expected_st
     stderr_file = f"{session_dir}/stderr-cmd{cmd_number}"
     status_file = f"{session_dir}/status-cmd{cmd_number}"
 
-    # Measure start time
-    start_time = time.time()
+    # Prepare sentinel
+    sentinel = f"__DONE_{cmd_number}__"
 
-    # Write command to history
+    # Build full command: history file + execute + sentinel
     escaped_cmd = command.replace('"', '\\"')
-    channel.send(f'echo "{escaped_cmd}" > {hist_file}\n'.encode())
-    time.sleep(0.1)
+    full_cmd = (
+        f'echo "{escaped_cmd}" > {hist_file}; '
+        f'source {hist_file} > {stdout_file} 2> {stderr_file}; '
+        f'echo $? > {status_file}; '
+        f'echo {sentinel}\n'
+    )
 
-    # Execute command via source
-    channel.send(f"source {hist_file} > {stdout_file} 2> {stderr_file}; echo $? > {status_file}\n".encode())
+    # Send command
+    start_time = time.time()
+    channel.send(full_cmd.encode())
 
-    # Wait for completion
-    wait_for_status_file(ssh, status_file)
+    # Read until sentinel appears
+    output_buffer = ""
+    while True:
+        if channel.recv_ready():
+            data = channel.recv(4096).decode()
+            output_buffer += data
+            if sentinel in output_buffer:
+                break
+        else:
+            time.sleep(0.05)  # small sleep to avoid busy loop
 
-    # Measure duration
-    duration = time.time() - start_time
+    #duration = time.time() - start_time
 
-    # Read outputs
-    stdout_text = read_file(ssh, stdout_file).strip()
-    stderr_text = read_file(ssh, stderr_file).strip()
+    # Read files once via SSH (can optimize further later)
+    stdin, stdout, stderr = ssh.exec_command(f"cat {stdout_file}")
+    stdout_text = stdout.read().decode().strip()
+    stdin, stdout, stderr = ssh.exec_command(f"cat {stderr_file}")
+    stderr_text = stdout.read().decode().strip()
+    stdin, stdout, stderr = ssh.exec_command(f"cat {status_file}")
     try:
-        exit_status = int(read_file(ssh, status_file).strip())
+        exit_status = int(stdout.read().decode().strip())
     except ValueError:
         exit_status = None
-
+    duration = time.time() - start_time
     # Print outputs
     print(f"STDOUT:\n{stdout_text}")
     print(f"STDERR:\n{stderr_text}")
@@ -111,7 +115,6 @@ def run_test(cmd_number, description, command, expected_stdout=None, expected_st
     if expected_exit is not None and exit_status != expected_exit:
         print(f"FAIL: Expected exit status {expected_exit}")
         passed = False
-
     if passed:
         print("PASS")
 
@@ -138,7 +141,7 @@ tests = [
 # --- Run tests ---
 cmd_number = 1
 for test in tests:
-    cmd_number = run_test(
+    cmd_number = run_command(
         cmd_number,
         description=test["desc"],
         command=test["cmd"],
