@@ -85,12 +85,14 @@ try:
         print(file=sys.stderr)
         
 
-                # (Optional) read initial prompt or MOTD
+        # (Optional) read initial prompt or MOTD
         time.sleep(0.5)
         if channel.recv_ready():
             banner = channel.recv(4096).decode('utf-8')
             print(banner)
-
+        interactive_shell(channel)
+        
+        """ 
         # Now send multiple commands
         output1 = send_command('whoami', channel)
         print("Output 1:", output1, file=sys.stderr)
@@ -99,13 +101,9 @@ try:
         print("Output 2:", output2, file=sys.stderr)
 
         output3 = send_command('ls -l', channel)
-        print("Output 3:", output3, file=sys.stderr)
+        print("Output 3:", output3, file=sys.stderr) """
 
-        
-        """         for cmd in ["whoami", "pwd"]:
-            print("sending command:", cmd, end="", file=sys.stderr)
-            output = send_command(cmd, channel)
-            print(f"{output=}", file=sys.stderr) """
+ 
         
             
         
