@@ -28,14 +28,17 @@ else:
     ssh.connect(host, username=username, password=password)
 
 # --- Open persistent shell ---
-channel = ssh.get_transport().open_session()
+transport = ssh.get_transport()
+if transport is None:
+    raise Exception
+channel = transport.open_session()
 channel.get_pty()
 channel.invoke_shell()
 channel.settimeout(0.1)
 
 # --- Detect server prompt ---
 time.sleep(0.2)
-channel.send('echo "$PS1"\n')
+channel.send('echo "$PS1"\n'.encode())
 time.sleep(0.2)
 ps1_output = ""
 while channel.recv_ready():
