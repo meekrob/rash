@@ -4,6 +4,7 @@ import time
 from datetime import datetime
 import os
 import getpass
+import readline # for history with up/down arrows (not cross-compatible)
 from typing import Any
 
 # --- Run command using source history-cmd# ---
