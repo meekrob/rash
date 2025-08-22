@@ -2,10 +2,68 @@
 import paramiko
 import time
 from datetime import datetime
-import os
+import os,sys
 import getpass
-import readline # for history with up/down arrows (not cross-compatible)
+from prompt_toolkit import PromptSession
+from prompt_toolkit.history import InMemoryHistory
 from typing import Any
+
+import time
+
+def stream_command_output(sftp, stdout_file, stderr_file, sentinel_file, poll_interval=0.1):
+    """Stream stdout/stderr while command is running."""
+    stdout_seen = 0
+    stderr_seen = 0
+
+    while True:
+        # Read new stdout
+        try:
+            with sftp.open(stdout_file, "r") as f:
+                f.seek(stdout_seen)
+                new_stdout = f.read().decode()
+                if new_stdout:
+                    print(new_stdout, end="", flush=True)
+                    stdout_seen += len(new_stdout.encode())
+        except FileNotFoundError:
+            pass
+
+        # Read new stderr
+        try:
+            with sftp.open(stderr_file, "r") as f:
+                f.seek(stderr_seen)
+                new_stderr = f.read().decode()
+                if new_stderr:
+                    print(new_stderr, end="", flush=True, file=sys.stderr)
+                    stderr_seen += len(new_stderr.encode())
+        except FileNotFoundError:
+            pass
+
+        # Check if sentinel/status file exists (command finished)
+        try:
+            sftp.stat(sentinel_file)
+            break
+        except FileNotFoundError:
+            pass
+
+        time.sleep(poll_interval)
+
+
+def read_channel_with_timeout(channel, sentinel, timeout=5.0):
+    """Read from channel until no more data or timeout expires."""
+    start_time = time.time()
+    buffer = ""
+    while True:
+        if channel.recv_ready():
+            buffer += channel.recv(4096).decode()
+            start_time = time.time()  # reset timeout after new data
+            if sentinel in buffer:
+                return buffer
+        elif time.time() - start_time > timeout:
+            break
+        else:
+            time.sleep(0.05)
+    return buffer
+
 
 # --- Run command using source history-cmd# ---
 def run_command(
@@ -42,15 +100,16 @@ def run_command(
     start_time = time.time()
     channel.send(exec_cmd.encode())
 
+    # Stream output while running
+    stream_command_output(sftp, stdout_file, stderr_file, status_file)
+
     # Wait until sentinel appears in the channel
-    buffer = ""
-    while True:
-        if channel.recv_ready():
-            buffer += channel.recv(4096).decode()
-            if sentinel in buffer:
-                break
-        else:
-            time.sleep(0.05)
+    timeout=10.0
+    command_timedout = False
+    buffer = read_channel_with_timeout(channel, sentinel, timeout=timeout)
+    if sentinel not in buffer:
+        print(f"[WARNING] Command output exceeded {timeout}")
+        command_timedout = True
 
     # Read outputs
     stdout_text = read_remote_file(sftp, stdout_file).strip()
@@ -63,8 +122,8 @@ def run_command(
     duration = time.time() - start_time
 
     # Always print main outputs
-    print(f"STDOUT:\n{stdout_text}")
-    print(f"STDERR:\n{stderr_text}")
+    print(f"STDOUT[{len(stdout_text)} bytes]")
+    print(f"STDERR[{len(stderr_text)} bytes]")
     print(f"Exit status: {exit_status}")
     print(f"Duration (including file reads): {duration:.2f} sec")
 
@@ -157,6 +216,7 @@ def initialize_session(channel:paramiko.Channel, ssh:paramiko.SSHClient) -> dict
 def read_remote_file(sftp, remote_path, timeout=10.0):
     """Wait for the remote file to exist, then read and return its contents."""
     start = time.time()
+    time.sleep(0.05) # slight delay to let things sync up
     while True:
         try:
             with sftp.open(remote_path, "r") as f:
@@ -199,13 +259,17 @@ SHELL_TESTS = [
 
 def interactive_loop(cmd_number, session_vars):
     # --- Interactive loop ---
+    session = PromptSession(history=InMemoryHistory())
     print("\nEntering interactive mode. Type 'exit' or press CTRL-D to quit.\n")
     while True:
         try:
-            user_cmd = input("> ")
+            user_cmd = session.prompt("> ")
         except EOFError:
             print("\n[EOF] CTRL-D received. Exiting.")
             break
+        except KeyboardInterrupt:
+            print("\nKeyboardInterrupt. Type 'exit' to quit.")
+            continue
 
         if not user_cmd.strip():
             continue
