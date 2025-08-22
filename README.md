@@ -18,9 +18,9 @@ Each user command is saved in a history folder in the users server home director
 3. stderr_file
 4. exit_status_file
 
-The actual command sent to the server is wrapped in `source command_file > stdout_file 2> stderr_file && echo $? > exit_status_file`
+The actual command sent to the server is wrapped in 
 
-user_cmd = User typed command into python window
+`source command_file > stdout_file 2> stderr_file && echo $? > exit_status_file`
 
-user_cmd is written to a file on 
+and the three generated files are read by a faster sftp session. The information is stored and displayed for the user.
 
