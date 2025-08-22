@@ -54,7 +54,7 @@ if not home_dir:
 
 # --- Create session directory ---
 timestamp = datetime.now().strftime("%Y-%m-%d-%H%M-%S")
-session_dir = f"{home_dir}/.gash/session-{timestamp}"
+session_dir = f"{home_dir}/.rash/session-{timestamp}"
 channel.send(f"mkdir -p {session_dir}\n".encode())
 time.sleep(0.1)
 print(f"Session directory: {session_dir}")
