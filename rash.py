@@ -4,77 +4,6 @@ import time
 from datetime import datetime
 import os
 import getpass
-
-# --- Connection info ---
-host = "riviera.colostate.edu"
-username = "dking"
-
-# --- SSH key authentication ---
-key_file = os.path.expanduser("~/.ssh/id_rsa")
-pkey = None
-if os.path.exists(key_file):
-    try:
-        pkey = paramiko.RSAKey.from_private_key_file(key_file)
-    except paramiko.PasswordRequiredException:
-        passphrase = getpass.getpass(f"Enter passphrase for {key_file}: ")
-        pkey = paramiko.RSAKey.from_private_key_file(key_file, password=passphrase)
-
-ssh = paramiko.SSHClient()
-ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-if pkey:
-    ssh.connect(host, username=username, pkey=pkey)
-else:
-    password = getpass.getpass("Password: ")
-    ssh.connect(host, username=username, password=password)
-
-# --- Open persistent shell ---
-transport = ssh.get_transport()
-if transport is None:
-    raise Exception("Ssh was unable to get_transport()")
-
-channel = transport.open_session()
-channel.get_pty()
-channel.invoke_shell()
-channel.settimeout(0.1)
-
-# --- Detect server prompt ---
-time.sleep(0.2)
-channel.send('echo "$PS1"\n'.encode())
-time.sleep(0.2)
-ps1_output = ""
-while channel.recv_ready():
-    ps1_output += channel.recv(4096).decode()
-server_prompt = ps1_output.strip().splitlines()[-1]
-
-# --- Determine remote home directory ---
-stdin, stdout, stderr = ssh.exec_command("echo $HOME")
-home_dir = stdout.read().decode().strip()
-if not home_dir:
-    raise RuntimeError("Could not determine remote home directory.")
-
-# --- Create session directory ---
-timestamp = datetime.now().strftime("%Y-%m-%d-%H%M-%S")
-session_dir = f"{home_dir}/.rash/session-{timestamp}"
-channel.send(f"mkdir -p {session_dir}\n".encode())
-time.sleep(0.1)
-print(f"Session directory: {session_dir}")
-
-# --- SFTP for reading files efficiently ---
-sftp = ssh.open_sftp()
-
-# --- Read remote file with wait ---
-def read_remote_file(remote_path, timeout=10.0):
-    """Wait for the remote file to exist, then read and return its contents."""
-    start = time.time()
-    while True:
-        try:
-            with sftp.open(remote_path, "r") as f:
-                return f.read().decode()
-        except FileNotFoundError:
-            if time.time() - start > timeout:
-                raise TimeoutError(f"File {remote_path} did not appear within {timeout:.1f} sec")
-            time.sleep(0.05)
-
 # --- Run command using source history-cmd# ---
 def run_command(
     cmd_number,
@@ -146,6 +75,84 @@ def run_command(
             print("PASS")
 
     return cmd_number + 1
+
+# --- Connection info ---
+host = "riviera.colostate.edu"
+username = "dking"
+
+def connection(host:str, username:str, key_file:str|None) -> tuple[paramiko.Channel, paramiko.SSHClient]: 
+    # --- SSH key authentication ---
+    #key_file = os.path.expanduser("~/.ssh/id_rsa")
+    if key_file is not None:
+        key_file = os.path.expanduser(key_file)
+    pkey = None
+    if key_file is not None and os.path.exists(key_file):
+        try:
+            pkey = paramiko.RSAKey.from_private_key_file(key_file)
+        except paramiko.PasswordRequiredException:
+            passphrase = getpass.getpass(f"Enter passphrase for {key_file}: ")
+            pkey = paramiko.RSAKey.from_private_key_file(key_file, password=passphrase)
+
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    if pkey:
+        ssh.connect(host, username=username, pkey=pkey)
+    else:
+        password = getpass.getpass("Password: ")
+        ssh.connect(host, username=username, password=password)
+
+    # --- Open persistent shell ---
+    transport = ssh.get_transport()
+    if transport is None:
+        raise Exception("Ssh was unable to get_transport()")
+
+    channel = transport.open_session()
+    channel.get_pty()
+    channel.invoke_shell()
+    channel.settimeout(0.1)
+    return channel, ssh
+
+
+channel,ssh = connection(host, username, "~/.ssh/id_rsa")
+# --- Detect server prompt ---
+time.sleep(0.2)
+channel.send('echo "$PS1"\n'.encode())
+time.sleep(0.2)
+ps1_output = ""
+while channel.recv_ready():
+    ps1_output += channel.recv(4096).decode()
+server_prompt = ps1_output.strip().splitlines()[-1]
+
+# --- Determine remote home directory ---
+stdin, stdout, stderr = ssh.exec_command("echo $HOME")
+home_dir = stdout.read().decode().strip()
+if not home_dir:
+    raise RuntimeError("Could not determine remote home directory.")
+
+# --- Create session directory ---
+timestamp = datetime.now().strftime("%Y-%m-%d-%H%M-%S")
+session_dir = f"{home_dir}/.rash/session-{timestamp}"
+channel.send(f"mkdir -p {session_dir}\n".encode())
+time.sleep(0.1)
+print(f"Session directory: {session_dir}")
+
+# --- SFTP for reading files efficiently ---
+sftp = ssh.open_sftp()
+
+# --- Read remote file with wait ---
+def read_remote_file(remote_path, timeout=10.0):
+    """Wait for the remote file to exist, then read and return its contents."""
+    start = time.time()
+    while True:
+        try:
+            with sftp.open(remote_path, "r") as f:
+                return f.read().decode()
+        except FileNotFoundError:
+            if time.time() - start > timeout:
+                raise TimeoutError(f"File {remote_path} did not appear within {timeout:.1f} sec")
+            time.sleep(0.05)
+
+
 
 # --- Example usage ---
 cmd_number = 1
