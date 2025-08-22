@@ -166,6 +166,28 @@ def read_remote_file(sftp, remote_path, timeout=10.0):
             time.sleep(0.05)
 
 
+SHELL_TESTS = [
+    {"desc": "Check whoami",                        "cmd": "whoami",            "expected_exit": 0},
+    {"desc": "Check working directory",             "cmd": "pwd",               "expected_exit": 0},
+    {"desc": "Nonexist. file list (stderr test)",   "cmd": "ls /nonexistent",   "expected_exit": 2},
+    {"desc": "Create directory testdir",            "cmd": "mkdir -p testdir",  "expected_exit": 0},
+    {"desc": "Change into testdir",                 "cmd": "cd testdir",        "expected_exit": 0},
+    {"desc": "Print pwd inside testdir",            "cmd": "basename $(pwd)",   "expected_exit": 0,
+                                                                                "expected_stdout": "testdir"},
+    {"desc": "Return to parent directory",          "cmd": "cd ..",             "expected_exit": 0},
+    {"desc": "Remove testdir",                      "cmd": "rmdir testdir",     "expected_exit": 0},
+    {"desc": "Print pwd after return",              "cmd": "pwd",               "expected_exit": 0},
+    {"desc": "Export env variable MYVAR",           "cmd": 'export MYVAR="hello world"', "expected_exit": 0},
+    {"desc": "Echo env variable MYVAR",             "cmd": "echo $MYVAR",       "expected_stdout": "hello world", 
+                                                                                "expected_exit": 0},
+    {"desc": "Stdout redirect test",                "cmd": 'echo "This is stdout" > out.txt', "expected_exit": 0},
+    {"desc": "Stderr test",                         "cmd": 'echo "This is stderr" 1>&2', "expected_exit": 0},
+    {"desc": "Read stdout file",                    "cmd": "cat out.txt",        "expected_stdout": "This is stdout", 
+                                                                                 "expected_exit": 0},
+    {"desc": "Command with failure exit status",    "cmd": "grep 'needle' /dev/null",   "expected_exit": 1},
+]
+
+
 def main():
     # --- Connection info ---
     host = "riviera.colostate.edu"
@@ -182,9 +204,15 @@ def main():
 
     # --- TESTS of basic operation ---
     cmd_number = 1
-    cmd_number = run_command(cmd_number, session_vars, description="Whoami", command="whoami", expected_exit=0, test=True)
-    cmd_number = run_command(cmd_number, session_vars, description="Nonexistent file", command="ls /nonexistent", expected_exit=2, expected_stderr="No such file", test=True)
-    cmd_number = run_command(cmd_number, session_vars, description="Echo test", command="echo hello world", expected_stdout="hello world", test=True)
+    for shell_test in SHELL_TESTS:
+        cmd_number = run_command(cmd_number, session_vars, 
+                                 description=shell_test['desc'], 
+                                 command=shell_test['cmd'], 
+                                 expected_stdout=shell_test.get("expected_stdout"),
+                                 expected_stderr=shell_test.get("expected_stderr"),
+                                 expected_exit=shell_test.get("expected_exit"),
+                                 test=True)
+        
 
     # --- Optional: check session directory size ---
     stdin, stdout, stderr = ssh.exec_command(f"du -sh {session_dir}")
