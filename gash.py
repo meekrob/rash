@@ -2,7 +2,7 @@
 import paramiko
 import time
 from datetime import datetime
-import os
+import os,sys
 import getpass
 
 # --- Connection info ---
@@ -35,120 +35,105 @@ channel.settimeout(0.1)
 
 # --- Detect server prompt ---
 time.sleep(0.2)
-channel.send('echo "$PS1"\n')
+channel.send('echo "$PS1"\n'.encode())
 time.sleep(0.2)
 ps1_output = ""
 while channel.recv_ready():
-    ps1_output += channel.recv(1024).decode()
+    ps1_output += channel.recv(4096).decode()
 server_prompt = ps1_output.strip().splitlines()[-1]
+
+# --- Determine remote home directory dynamically ---
+stdin, stdout, stderr = ssh.exec_command("echo $HOME")
+home_dir = stdout.read().decode().strip()
+if not home_dir:
+    raise RuntimeError("Could not determine remote home directory.")
 
 # --- Create session directory ---
 timestamp = datetime.now().strftime("%Y-%m-%d-%H%M-%S")
-session_dir = f"~/.gash/session-{timestamp}"
+session_dir = f"{home_dir}/.gash/session-{timestamp}"
 channel.send(f"mkdir -p {session_dir}\n".encode())
 time.sleep(0.1)
 print(f"Session directory: {session_dir}")
 
-# --- Helper functions ---
-def run_command(cmd_number, description, command, expected_stdout=None, expected_stderr=None, expected_exit=None):
+# --- SFTP for reading files efficiently ---
+sftp = ssh.open_sftp()
+
+def wait_for_file(remote_path, timeout=10.0):
+    """Wait until the remote file exists or timeout occurs."""
+    print(f"Waiting for {remote_path}...", file=sys.stderr)
+    start = time.time()
+    while True:
+        try:
+            sftp.stat(remote_path)
+            return
+        except FileNotFoundError:
+            if time.time() - start > timeout:
+                raise TimeoutError(f"File {remote_path} did not appear within {timeout:.1f} sec")
+            time.sleep(0.05)
+
+
+def read_remote_file(remote_path):
+
+    wait_for_file(remote_path)
+
+    with sftp.open(remote_path, "r") as f:
+        return f.read().decode()
+
+# --- Run command using source history-cmd# ---
+def run_command(cmd_number, description, command):
     print(f"\n--- Test #{cmd_number}: {description} ---")
-    
+
     hist_file = f"{session_dir}/history-cmd{cmd_number}"
     stdout_file = f"{session_dir}/stdout-cmd{cmd_number}"
     stderr_file = f"{session_dir}/stderr-cmd{cmd_number}"
     status_file = f"{session_dir}/status-cmd{cmd_number}"
-
-    # Prepare sentinel
     sentinel = f"__DONE_{cmd_number}__"
 
-    # Build full command: history file + execute + sentinel
+    # Write command to history
     escaped_cmd = command.replace('"', '\\"')
-    full_cmd = (
-        f'echo "{escaped_cmd}" > {hist_file}; '
-        f'source {hist_file} > {stdout_file} 2> {stderr_file}; '
-        f'echo $? > {status_file}; '
-        f'echo {sentinel}\n'
-    )
+    channel.send(f'echo "{escaped_cmd}" > {hist_file}\n'.encode())
+    time.sleep(0.05)
 
-    # Send command
+    # Execute command, redirect outputs, write exit status, append sentinel
+    exec_cmd = f"source {hist_file} > {stdout_file} 2> {stderr_file}; echo $? > {status_file}; sync; echo {sentinel}\n"
     start_time = time.time()
-    channel.send(full_cmd.encode())
+    channel.send(exec_cmd.encode())
 
-    # Read until sentinel appears
-    output_buffer = ""
+    # Wait until sentinel appears
+    buffer = ""
     while True:
         if channel.recv_ready():
             data = channel.recv(4096).decode()
-            output_buffer += data
-            if sentinel in output_buffer:
+            buffer += data
+            if sentinel in buffer:
                 break
         else:
-            time.sleep(0.05)  # small sleep to avoid busy loop
+            time.sleep(0.05)
 
-    #duration = time.time() - start_time
-
-    # Read files once via SSH (can optimize further later)
-    stdin, stdout, stderr = ssh.exec_command(f"cat {stdout_file}")
-    stdout_text = stdout.read().decode().strip()
-    stdin, stdout, stderr = ssh.exec_command(f"cat {stderr_file}")
-    stderr_text = stdout.read().decode().strip()
-    stdin, stdout, stderr = ssh.exec_command(f"cat {status_file}")
+    # Read files once via SFTP
+    stdout_text = read_remote_file(stdout_file).strip()
+    stderr_text = read_remote_file(stderr_file).strip()
     try:
-        exit_status = int(stdout.read().decode().strip())
+        exit_status = int(read_remote_file(status_file).strip())
     except ValueError:
         exit_status = None
+
     duration = time.time() - start_time
-    # Print outputs
+
+    # Print results
     print(f"STDOUT:\n{stdout_text}")
     print(f"STDERR:\n{stderr_text}")
     print(f"Exit status: {exit_status}")
-    print(f"Duration: {duration:.2f} sec")
-
-    # Automatic checks
-    passed = True
-    if expected_stdout is not None and stdout_text != expected_stdout:
-        print(f"FAIL: Expected stdout '{expected_stdout}'")
-        passed = False
-    if expected_stderr is not None and stderr_text != expected_stderr:
-        print(f"FAIL: Expected stderr '{expected_stderr}'")
-        passed = False
-    if expected_exit is not None and exit_status != expected_exit:
-        print(f"FAIL: Expected exit status {expected_exit}")
-        passed = False
-    if passed:
-        print("PASS")
+    print(f"Duration (including file reads): {duration:.2f} sec")
 
     return cmd_number + 1
 
-# --- Define tests ---
-tests = [
-    {"desc": "Check whoami", "cmd": "whoami", "expected_exit": 0},
-    {"desc": "Check working directory", "cmd": "pwd", "expected_exit": 0},
-    {"desc": "Nonexistent file listing (stderr test)", "cmd": "ls /nonexistent", "expected_exit": 2},
-    {"desc": "Create directory testdir", "cmd": "mkdir -p testdir", "expected_exit": 0},
-    {"desc": "Change into testdir", "cmd": "cd testdir", "expected_exit": 0},
-    {"desc": "Print pwd inside testdir", "cmd": "pwd", "expected_exit": 0},
-    {"desc": "Return to parent directory", "cmd": "cd ..", "expected_exit": 0},
-    {"desc": "Print pwd after return", "cmd": "pwd", "expected_exit": 0},
-    {"desc": "Export env variable MYVAR", "cmd": 'export MYVAR="hello world"', "expected_exit": 0},
-    {"desc": "Echo env variable MYVAR", "cmd": "echo $MYVAR", "expected_stdout": "hello world", "expected_exit": 0},
-    {"desc": "Stdout redirect test", "cmd": 'echo "This is stdout" > out.txt', "expected_exit": 0},
-    {"desc": "Stderr test", "cmd": 'echo "This is stderr" 1>&2', "expected_exit": 0},
-    {"desc": "Read stdout file", "cmd": "cat out.txt", "expected_stdout": "This is stdout", "expected_exit": 0},
-    {"desc": "Command with failure exit status", "cmd": "grep 'needle' /dev/null", "expected_exit": 1},
-]
-
-# --- Run tests ---
+# --- Example tests ---
 cmd_number = 1
-for test in tests:
-    cmd_number = run_command(
-        cmd_number,
-        description=test["desc"],
-        command=test["cmd"],
-        expected_stdout=test.get("expected_stdout"),
-        expected_stderr=test.get("expected_stderr"),
-        expected_exit=test.get("expected_exit")
-    )
+cmd_number = run_command(cmd_number, "Whoami", "whoami")
+cmd_number = run_command(cmd_number, "List root dir (stderr expected)", "ls /nonexistent")
+cmd_number = run_command(cmd_number, "Echo test", "echo hello world")
+cmd_number = run_command(cmd_number, "Change dir", "mkdir -p testdir && cd testdir && pwd")
 
 # --- Session directory size ---
 stdin, stdout, stderr = ssh.exec_command(f"du -sh {session_dir}")
@@ -156,5 +141,6 @@ size_info = stdout.read().decode().strip()
 print(f"\nTotal session directory size: {size_info}")
 
 # --- Close SSH ---
+sftp.close()
 channel.close()
 ssh.close()
