@@ -196,6 +196,32 @@ SHELL_TESTS = [
 ]
 
 
+def interactive_loop(cmd_number, session_vars):
+    # --- Interactive loop ---
+    print("\nEntering interactive mode. Type 'exit' or press CTRL-D to quit.\n")
+    while True:
+        try:
+            user_cmd = input("> ")
+        except EOFError:
+            print("\n[EOF] CTRL-D received. Exiting.")
+            break
+
+        if not user_cmd.strip():
+            continue
+        if user_cmd.strip().lower() in ("exit", "quit", "logout"):
+            print("Exiting session...")
+            break
+
+        # Reuse run_command; no test expectations in interactive mode
+        cmd_number = run_command(
+            cmd_number,
+            session_vars,
+            description="interactive",
+            command=user_cmd,
+            test=False
+        )
+
+
 def main():
     # --- Connection info ---
     host = "riviera.colostate.edu"
@@ -221,6 +247,9 @@ def main():
                                  expected_exit=shell_test.get("expected_exit"),
                                  test=True)
         
+
+    # INTERACTIVE LOOP
+    interactive_loop(cmd_number, session_vars)
 
     # --- Optional: check session directory size ---
     stdin, stdout, stderr = ssh.exec_command(f"du -sh {session_dir}")
