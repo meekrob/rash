@@ -170,6 +170,8 @@ SHELL_TESTS = [
     {"desc": "Check whoami",                        "cmd": "whoami",            "expected_exit": 0},
     {"desc": "Check working directory",             "cmd": "pwd",               "expected_exit": 0},
     {"desc": "Nonexist. file list (stderr test)",   "cmd": "ls /nonexistent",   "expected_exit": 2},
+
+    ## --- test directory creation, cd, removal ---
     {"desc": "Create directory testdir",            "cmd": "mkdir -p testdir",  "expected_exit": 0},
     {"desc": "Change into testdir",                 "cmd": "cd testdir",        "expected_exit": 0},
     {"desc": "Print pwd inside testdir",            "cmd": "basename $(pwd)",   "expected_exit": 0,
@@ -177,13 +179,19 @@ SHELL_TESTS = [
     {"desc": "Return to parent directory",          "cmd": "cd ..",             "expected_exit": 0},
     {"desc": "Remove testdir",                      "cmd": "rmdir testdir",     "expected_exit": 0},
     {"desc": "Print pwd after return",              "cmd": "pwd",               "expected_exit": 0},
+
+    ## --- test creating and accessing a variable --- 
     {"desc": "Export env variable MYVAR",           "cmd": 'export MYVAR="hello world"', "expected_exit": 0},
     {"desc": "Echo env variable MYVAR",             "cmd": "echo $MYVAR",       "expected_stdout": "hello world", 
                                                                                 "expected_exit": 0},
+
+    ## --- test redirection ---
     {"desc": "Stdout redirect test",                "cmd": 'echo "This is stdout" > out.txt', "expected_exit": 0},
     {"desc": "Stderr test",                         "cmd": 'echo "This is stderr" 1>&2', "expected_exit": 0},
     {"desc": "Read stdout file",                    "cmd": "cat out.txt",        "expected_stdout": "This is stdout", 
                                                                                  "expected_exit": 0},
+
+    ## --- test exit status ---
     {"desc": "Command with failure exit status",    "cmd": "grep 'needle' /dev/null",   "expected_exit": 1},
 ]
 
