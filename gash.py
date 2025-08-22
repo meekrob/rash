@@ -30,7 +30,8 @@ else:
 # --- Open persistent shell ---
 transport = ssh.get_transport()
 if transport is None:
-    raise Exception
+    raise Exception("Ssh was unable to get_transport()")
+
 channel = transport.open_session()
 channel.get_pty()
 channel.invoke_shell()
