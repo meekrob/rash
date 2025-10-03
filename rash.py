@@ -14,15 +14,16 @@ Dependencies:
     See conda.env for full list.
 
 """
-import paramiko
-import time
-from datetime import datetime
 import os
 import sys
+import time
+from datetime import datetime
 import getpass
+from typing import Any
+import paramiko
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
-from typing import Any
+
 
 DO_TESTS_ON_CONNECT = False
 
@@ -61,7 +62,7 @@ def main():
     # --- Optional: check session directory size ---
     _, stdout, stderr = ssh.exec_command(f"du -sh {session_dir}")
     if stderr:
-        print(f"someshit with stderr", file=sys.stderr)
+        print(f"someshit with stderr {stderr}", file=sys.stderr)
     size_info = stdout.read().decode().strip()
     print(f"\nTotal session directory size: {size_info}")
 
@@ -252,7 +253,7 @@ def initialize_session(channel:paramiko.Channel, ssh:paramiko.SSHClient) -> dict
     server_prompt = ps1_output.strip().splitlines()[-1]
 
     # --- Determine remote home directory ---
-    stdin, stdout, stderr = ssh.exec_command("echo $HOME")
+    _, stdout, _ = ssh.exec_command("echo $HOME")
     home_dir = stdout.read().decode().strip()
     if not home_dir:
         raise RuntimeError("Could not determine remote home directory.")
