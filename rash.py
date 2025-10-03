@@ -1,17 +1,33 @@
 #!/usr/bin/env python3
+"""
+This script is a prototype script for a terminal emulator / GUI hybrid. 
+It handles the shell connections and backend only.
+
+Set connection information credentials in main()
+
+Usage:
+    python rash.py
+
+Dependencies:
+    paramiko, flask, prompt_toolkit
+
+    See conda.env for full list.
+
+"""
 import paramiko
 import time
 from datetime import datetime
-import os,sys
+import os
+import sys
 import getpass
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
 from typing import Any
-import time
 
 DO_TESTS_ON_CONNECT = False
 
 def main():
+
     # --- Connection info ---
     host = "riviera.colostate.edu"
     username = "dking"
@@ -37,7 +53,7 @@ def main():
                                     expected_stderr=shell_test.get("expected_stderr"),
                                     expected_exit=shell_test.get("expected_exit"),
                                     test=True)
-          
+
 
     # INTERACTIVE LOOP
     interactive_loop(cmd_number, session_vars)
@@ -249,11 +265,11 @@ def initialize_session(channel:paramiko.Channel, ssh:paramiko.SSHClient) -> dict
     # --- SFTP for reading files efficiently ---
     sftp = ssh.open_sftp()
 
-    return {'sftp':sftp, 
+    return {'sftp':sftp,
             'session_dir': session_dir,
-            'home_dir': home_dir, 
-            'server_prompt': server_prompt, 
-            'channel':channel, 
+            'home_dir': home_dir,
+            'server_prompt': server_prompt,
+            'channel':channel,
             'ssh':ssh}
 
 # --- Read remote file with wait ---
