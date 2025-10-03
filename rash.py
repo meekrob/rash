@@ -7,8 +7,50 @@ import getpass
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
 from typing import Any
-
 import time
+
+DO_TESTS_ON_CONNECT = False
+
+def main():
+    # --- Connection info ---
+    host = "riviera.colostate.edu"
+    username = "dking"
+    # passwordless login
+    channel,ssh = connection(host, username, "~/.ssh/id_rsa")
+    session_vars = initialize_session(channel, ssh)
+
+    # extract vars for session
+    sftp = session_vars['sftp']
+    session_dir = session_vars['session_dir']
+    home_dir = session_vars['home_dir']
+    server_prompt = session_vars['server_prompt']
+
+
+    # --- TESTS of basic operation ---
+    cmd_number = 1
+    if DO_TESTS_ON_CONNECT:
+        for shell_test in SHELL_TESTS:
+            cmd_number = run_command(cmd_number, session_vars, 
+                                    description=shell_test['desc'], 
+                                    command=shell_test['cmd'], 
+                                    expected_stdout=shell_test.get("expected_stdout"),
+                                    expected_stderr=shell_test.get("expected_stderr"),
+                                    expected_exit=shell_test.get("expected_exit"),
+                                    test=True)
+            
+
+    # INTERACTIVE LOOP
+    interactive_loop(cmd_number, session_vars)
+
+    # --- Optional: check session directory size ---
+    stdin, stdout, stderr = ssh.exec_command(f"du -sh {session_dir}")
+    size_info = stdout.read().decode().strip()
+    print(f"\nTotal session directory size: {size_info}")
+
+    # --- Close SSH ---
+    sftp.close()
+    channel.close()
+    ssh.close()
 
 def stream_command_output(sftp, stdout_file, stderr_file, sentinel_file, poll_interval=0.1):
     """Stream stdout/stderr while command is running."""
@@ -286,44 +328,5 @@ def interactive_loop(cmd_number, session_vars):
             test=False
         )
 
-
-def main():
-    # --- Connection info ---
-    host = "riviera.colostate.edu"
-    username = "dking"
-    channel,ssh = connection(host, username, "~/.ssh/id_rsa")
-    session_vars = initialize_session(channel, ssh)
-
-    # extract vars for session
-    sftp = session_vars['sftp']
-    session_dir = session_vars['session_dir']
-    home_dir = session_vars['home_dir']
-    server_prompt = session_vars['server_prompt']
-
-
-    # --- TESTS of basic operation ---
-    cmd_number = 1
-    for shell_test in SHELL_TESTS:
-        cmd_number = run_command(cmd_number, session_vars, 
-                                 description=shell_test['desc'], 
-                                 command=shell_test['cmd'], 
-                                 expected_stdout=shell_test.get("expected_stdout"),
-                                 expected_stderr=shell_test.get("expected_stderr"),
-                                 expected_exit=shell_test.get("expected_exit"),
-                                 test=True)
-        
-
-    # INTERACTIVE LOOP
-    interactive_loop(cmd_number, session_vars)
-
-    # --- Optional: check session directory size ---
-    stdin, stdout, stderr = ssh.exec_command(f"du -sh {session_dir}")
-    size_info = stdout.read().decode().strip()
-    print(f"\nTotal session directory size: {size_info}")
-
-    # --- Close SSH ---
-    sftp.close()
-    channel.close()
-    ssh.close()
 
 if __name__ == "__main__": main()
