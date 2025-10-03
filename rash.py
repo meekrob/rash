@@ -38,8 +38,8 @@ def main():
     # extract vars for session
     sftp = session_vars['sftp']
     session_dir = session_vars['session_dir']
-    home_dir = session_vars['home_dir']
-    server_prompt = session_vars['server_prompt']
+    #home_dir = session_vars['home_dir']
+    #server_prompt = session_vars['server_prompt']
 
 
     # --- TESTS of basic operation ---
@@ -59,7 +59,9 @@ def main():
     interactive_loop(cmd_number, session_vars)
 
     # --- Optional: check session directory size ---
-    stdin, stdout, stderr = ssh.exec_command(f"du -sh {session_dir}")
+    _, stdout, stderr = ssh.exec_command(f"du -sh {session_dir}")
+    if stderr:
+        print(f"someshit with stderr", file=sys.stderr)
     size_info = stdout.read().decode().strip()
     print(f"\nTotal session directory size: {size_info}")
 

@@ -7,4 +7,5 @@ dependencies:
   - pytest
   - flask
   - prompt_toolkit
+  - pylint
 prefix: /opt/miniconda3/envs/emulator
