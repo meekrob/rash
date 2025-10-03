@@ -301,9 +301,9 @@ SHELL_TESTS = [
     {"desc": "Remove testdir",                      "cmd": "rmdir testdir",     "expected_exit": 0},
     {"desc": "Print pwd after return",              "cmd": "pwd",               "expected_exit": 0},
 
-    ## --- test creating and accessing a variable --- 
+    ## --- test creating and accessing a variable ---
     {"desc": "Export env variable MYVAR",           "cmd": 'export MYVAR="hello world"', "expected_exit": 0},
-    {"desc": "Echo env variable MYVAR",             "cmd": "echo $MYVAR",       "expected_stdout": "hello world", 
+    {"desc": "Echo env variable MYVAR",             "cmd": "echo $MYVAR",       "expected_stdout": "hello world",
                                                                                 "expected_exit": 0},
 
     ## --- test redirection ---
@@ -346,5 +346,5 @@ def interactive_loop(cmd_number, session_vars):
             test=False
         )
 
-
-if __name__ == "__main__": main()
+if __name__ == "__main__":
+    main()
