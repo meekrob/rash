@@ -30,14 +30,14 @@ def main():
     cmd_number = 1
     if DO_TESTS_ON_CONNECT:
         for shell_test in SHELL_TESTS:
-            cmd_number = run_command(cmd_number, session_vars, 
-                                    description=shell_test['desc'], 
-                                    command=shell_test['cmd'], 
+            cmd_number = run_command(cmd_number, session_vars,
+                                    description=shell_test['desc'],
+                                    command=shell_test['cmd'],
                                     expected_stdout=shell_test.get("expected_stdout"),
                                     expected_stderr=shell_test.get("expected_stderr"),
                                     expected_exit=shell_test.get("expected_exit"),
                                     test=True)
-            
+          
 
     # INTERACTIVE LOOP
     interactive_loop(cmd_number, session_vars)
@@ -118,7 +118,7 @@ def run_command(
     expected_stdout: str|None = None,
     expected_stderr: str|None = None,
 ):
-    
+
     session_dir = session_vars['session_dir']
     channel = session_vars['channel']
     sftp = session_vars['sftp']
@@ -187,7 +187,9 @@ def run_command(
     return cmd_number + 1
 
 
-def connection(host:str, username:str, key_file:str|None) -> tuple[paramiko.Channel, paramiko.SSHClient]: 
+def connection(host:str,
+               username:str,
+               key_file:str|None) -> tuple[paramiko.Channel, paramiko.SSHClient]:
     # --- SSH key authentication ---
     #key_file = os.path.expanduser("~/.ssh/id_rsa")
     if key_file is not None:
@@ -248,7 +250,7 @@ def initialize_session(channel:paramiko.Channel, ssh:paramiko.SSHClient) -> dict
     sftp = ssh.open_sftp()
 
     return {'sftp':sftp, 
-            'session_dir': session_dir, 
+            'session_dir': session_dir,
             'home_dir': home_dir, 
             'server_prompt': server_prompt, 
             'channel':channel, 
@@ -291,7 +293,7 @@ SHELL_TESTS = [
     ## --- test redirection ---
     {"desc": "Stdout redirect test",                "cmd": 'echo "This is stdout" > out.txt', "expected_exit": 0},
     {"desc": "Stderr test",                         "cmd": 'echo "This is stderr" 1>&2', "expected_exit": 0},
-    {"desc": "Read stdout file",                    "cmd": "cat out.txt",        "expected_stdout": "This is stdout", 
+    {"desc": "Read stdout file",                    "cmd": "cat out.txt",        "expected_stdout": "This is stdout",
                                                                                  "expected_exit": 0},
 
     ## --- test exit status ---
