@@ -63,9 +63,8 @@ def main():
     interactive_loop(cmd_number, session_vars)
 
     # --- Optional: check session directory size ---
-    _, stdout, stderr = ssh.exec_command(f"du -sh {session_dir}")
-    if stderr:
-        print(f"someshit with stderr {stderr}", file=sys.stderr)
+    _,stdout,_ = ssh.exec_command(f"du -sh {session_dir}")
+
     size_info = stdout.read().decode().strip()
     print(f"\nTotal session directory size: {size_info}")
 
