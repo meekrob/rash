@@ -16,8 +16,10 @@ jobs:
         python-version: ${{ matrix.python-version }}
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
-        pip install pylint paramiko prompt_toolkit
+          python -m pip install --upgrade pip
+          # Ensure modern pylint + astroid to support Python 3.10 type hints
+          pip install --upgrade "pylint>=2.14.0" "astroid>=2.11.0"
+          pip install paramiko prompt_toolkit
     - name: Analysing the code with pylint
       run: |
         pylint $(git ls-files '*.py')
