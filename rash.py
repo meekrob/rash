@@ -25,15 +25,18 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
 
 
-DO_TESTS_ON_CONNECT = False
+DO_TESTS_ON_CONNECT = True
 
 def main():
+    """
+    Set connection info, optionally run shell tests, and enter interactive session
+    """
 
     # --- Connection info ---
     host = "riviera.colostate.edu"
     username = "dking"
     # passwordless login
-    channel,ssh = connection(host, username, "~/.ssh/id_rsa")
+    channel,ssh = open_connection(host, username, "~/.ssh/id_rsa")
     session_vars = initialize_session(channel, ssh)
 
     # extract vars for session
@@ -137,6 +140,9 @@ def run_command(
     expected_stdout: str|None = None,
     expected_stderr: str|None = None,
 ):
+    """
+    Basic function for running a command
+    """
 
     session_dir = session_vars['session_dir']
     channel = session_vars['channel']
@@ -157,7 +163,10 @@ def run_command(
     time.sleep(0.05)
 
     # Execute the command
-    exec_cmd = f"source {hist_file} > {stdout_file} 2> {stderr_file}; echo $? > {status_file}; echo {sentinel}\n"
+    exec_cmd = ''.join([ f"source {hist_file} > {stdout_file}",
+                         f" 2> {stderr_file}; ",
+                         f"echo $? > {status_file}; ",
+                         f"echo {sentinel}\n"])
     start_time = time.time()
     channel.send(exec_cmd.encode())
 
@@ -166,11 +175,11 @@ def run_command(
 
     # Wait until sentinel appears in the channel
     timeout=10.0
-    command_timedout = False
+    #command_timedout = False
     buffer = read_channel_with_timeout(channel, sentinel, timeout=timeout)
     if sentinel not in buffer:
         print(f"[WARNING] Command output exceeded {timeout}")
-        command_timedout = True
+        #command_timedout = True
 
     # Read outputs
     stdout_text = read_remote_file(sftp, stdout_file).strip()
@@ -206,9 +215,12 @@ def run_command(
     return cmd_number + 1
 
 
-def connection(host:str,
+def open_connection(host:str,
                username:str,
                key_file:str|None) -> tuple[paramiko.Channel, paramiko.SSHClient]:
+    """
+    open_connection - connect using password or key file
+    """
     # --- SSH key authentication ---
     #key_file = os.path.expanduser("~/.ssh/id_rsa")
     if key_file is not None:
@@ -232,7 +244,7 @@ def connection(host:str,
     # --- Open persistent shell ---
     transport = ssh.get_transport()
     if transport is None:
-        raise Exception("Ssh was unable to get_transport()")
+        raise AttributeError("Ssh was unable to get_transport()")
 
     channel = transport.open_session()
     channel.get_pty()
@@ -242,7 +254,9 @@ def connection(host:str,
 
 
 def initialize_session(channel:paramiko.Channel, ssh:paramiko.SSHClient) -> dict[str, Any]:
-
+    """
+    initialize_session - Initialize backend setup after successful login.
+    """
     # --- Detect server prompt ---
     time.sleep(0.2)
     channel.send('echo "$PS1"\n'.encode())
@@ -284,9 +298,9 @@ def read_remote_file(sftp, remote_path, timeout=10.0):
         try:
             with sftp.open(remote_path, "r") as f:
                 return f.read().decode()
-        except FileNotFoundError:
+        except FileNotFoundError as exc:
             if time.time() - start > timeout:
-                raise TimeoutError(f"File {remote_path} did not appear within {timeout:.1f} sec")
+                raise TimeoutError(f"File {remote_path} not found in {timeout:.1f} sec") from exc
             time.sleep(0.05)
 
 
@@ -299,28 +313,38 @@ SHELL_TESTS = [
     {"desc": "Create directory testdir",            "cmd": "mkdir -p testdir",  "expected_exit": 0},
     {"desc": "Change into testdir",                 "cmd": "cd testdir",        "expected_exit": 0},
     {"desc": "Print pwd inside testdir",            "cmd": "basename $(pwd)",   "expected_exit": 0,
-                                                                                "expected_stdout": "testdir"},
+                                                                                "expected_stdout":
+                                                                                         "testdir"},
     {"desc": "Return to parent directory",          "cmd": "cd ..",             "expected_exit": 0},
     {"desc": "Remove testdir",                      "cmd": "rmdir testdir",     "expected_exit": 0},
     {"desc": "Print pwd after return",              "cmd": "pwd",               "expected_exit": 0},
 
     ## --- test creating and accessing a variable ---
-    {"desc": "Export env variable MYVAR",           "cmd": 'export MYVAR="hello world"', "expected_exit": 0},
-    {"desc": "Echo env variable MYVAR",             "cmd": "echo $MYVAR",       "expected_stdout": "hello world",
+    {"desc": "Export env variable MYVAR",           "cmd": 'export MYVAR="hello world"',
+                                                                                "expected_exit": 0},
+    {"desc": "Echo env variable MYVAR",             "cmd": "echo $MYVAR",       "expected_stdout":
+                                                                                    "hello world",
                                                                                 "expected_exit": 0},
 
     ## --- test redirection ---
-    {"desc": "Stdout redirect test",                "cmd": 'echo "This is stdout" > out.txt', "expected_exit": 0},
-    {"desc": "Stderr test",                         "cmd": 'echo "This is stderr" 1>&2', "expected_exit": 0},
-    {"desc": "Read stdout file",                    "cmd": "cat out.txt",        "expected_stdout": "This is stdout",
-                                                                                 "expected_exit": 0},
+    {"desc": "Stdout redirect test",                "cmd": 'echo "This is stdout" > out.txt',
+                                                                                "expected_exit": 0},
+    {"desc": "Stderr test",                         "cmd": 'echo "This is stderr" 1>&2',
+                                                                                "expected_exit": 0},
+    {"desc": "Read stdout file",                    "cmd": "cat out.txt",       "expected_stdout":
+                                                                                "This is stdout",
+                                                                                "expected_exit": 0},
 
     ## --- test exit status ---
-    {"desc": "Command with failure exit status",    "cmd": "grep 'needle' /dev/null",   "expected_exit": 1},
+    {"desc": "Command with failure exit status",
+     "cmd": "grep 'needle' /dev/null",   "expected_exit": 1},
 ]
 
 
 def interactive_loop(cmd_number, session_vars):
+    """
+    interactive_loop - take user text input, detect exit or send it to run_command 
+    """
     # --- Interactive loop ---
     session = PromptSession(history=InMemoryHistory())
     print("\nEntering interactive mode. Type 'exit' or press CTRL-D to quit.\n")
