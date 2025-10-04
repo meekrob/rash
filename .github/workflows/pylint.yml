@@ -10,13 +10,14 @@ jobs:
         python-version: ["3.8", "3.9", "3.10"]
     steps:
     - uses: actions/checkout@v4
-    - name: Setup Miniconda
-      uses: conda-incubator/setup-miniconda@v3
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v3
       with:
-          auto-update-conda: true
-          # Point to your environment file
-          environment-file: environment.yml
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pylint paramiko prompt_toolkit
     - name: Analysing the code with pylint
-      shell: bash -l {0}
       run: |
         pylint $(git ls-files '*.py')
