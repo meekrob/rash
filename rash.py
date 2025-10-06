@@ -11,7 +11,7 @@ Usage:
 Dependencies:
     paramiko, flask, prompt_toolkit
 
-    See conda.env for full list.
+    See environment.yml for full list.
 
 """
 import os
