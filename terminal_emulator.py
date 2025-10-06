@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-import paramiko
-from paramiko import Channel
+import sys
+import time
+import os
 import getpass
-import sys, time, os
+import select
+import paramiko
 
 #host = 'login-ci.rc.colorado.edu'
 host = 'riviera.colostate.edu'
@@ -13,8 +15,6 @@ username = 'dking'
 private_key_path = os.path.expanduser("~/.ssh/id_rsa")
 
 transport = None
-
-import select
 
 def interactive_shell(channel: paramiko.Channel):
     """Simple interactive loop to send user input and print server output."""
