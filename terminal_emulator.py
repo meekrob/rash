@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+"""
+terminal_emulator - light weight ssh interface using paramiko
+"""
 import sys
 import time
 import os
@@ -10,7 +13,8 @@ import paramiko
 HOST = 'riviera.colostate.edu'
 #USERNAME = 'dcking@colostate.edu'
 USERNAME = 'dking'
-#PASSWORD = getpass.getpass("Enter password with duo prompt (password, push) or (password, hardwareKey): ")
+GETPASS_PROMPT = "Enter password with duo prompt (password, push) or (password, hardwareKey): "
+#PASSWORD = getpass.getpass(GETPASS_PROMPT)
 # Path to your private key (default: ~/.ssh/id_rsa)
 private_key_path = os.path.expanduser("~/.ssh/id_rsa")
 
@@ -43,6 +47,9 @@ def interactive_shell(channel: paramiko.Channel):
         print("\nExiting interactive shell.")
 
 def send_command(cmd: str, channel: paramiko.Channel, delay: float = 0.5) -> str:
+    """
+    send_command - send string command to provided channel, wait, and return output
+    """
     if not channel.send_ready():
         raise RuntimeError("Channel not ready for sending commands.")
     cmd += '\n'
@@ -68,55 +75,58 @@ try:
         print(f"Key authentication failed: {key_error}", file=sys.stderr)
 
         # --- Fall back to password authentication ---
-        password = getpass.getpass("Enter password with duo prompt (password, push) or (password, hardwareKey): ")
+        password = getpass.getpass(GETPASS_PROMPT)
         transport.connect(username=USERNAME, password=password)
 
 
 
-    channel = None
+    CHANNEL = None
     try:
         # Open a channel for executing commands
-        channel = transport.open_session()
+        CHANNEL = transport.open_session()
         print("get_pty()", end="", file=sys.stderr)
-        channel.get_pty()
+        CHANNEL.get_pty()
         print(file=sys.stderr)
         print("invoke_shell()", end="", file=sys.stderr)
-        channel.invoke_shell()
+        CHANNEL.invoke_shell()
         print(file=sys.stderr)
 
 
         # (Optional) read initial prompt or MOTD
         time.sleep(0.5)
-        if channel.recv_ready():
-            banner = channel.recv(4096).decode('utf-8')
+        if CHANNEL.recv_ready():
+            banner = CHANNEL.recv(4096).decode('utf-8')
             print(banner)
-        interactive_shell(channel)
+        interactive_shell(CHANNEL)
 
-        """ 
-        # Now send multiple commands
-        output1 = send_command('whoami', channel)
-        print("Output 1:", output1, file=sys.stderr)
+        RUN_TEST_COMMANDS = False
+        if RUN_TEST_COMMANDS:
+            # Now send multiple commands
+            output1 = send_command('whoami', CHANNEL)
+            print("Output 1:", output1, file=sys.stderr)
 
-        output2 = send_command('pwd', channel)
-        print("Output 2:", output2, file=sys.stderr)
+            output2 = send_command('pwd', CHANNEL)
+            print("Output 2:", output2, file=sys.stderr)
 
-        output3 = send_command('ls -l', channel)
-        print("Output 3:", output3, file=sys.stderr) """
+            output3 = send_command('ls -l', CHANNEL)
+            print("Output 3:", output3, file=sys.stderr)
 
     except paramiko.SSHException as e:
         print(f"SSH error: {e}")
         raise
     finally:
-        if channel is not None:
-            channel.close()
+        if CHANNEL is not None:
+            CHANNEL.close()
 
 except paramiko.AuthenticationException as e:
     print(f"Authentication Failed: {e}", file=sys.stderr)
     #sys.exit(1)
 
-except Exception as e:
-    print(f"Unexpected error: {e}")
+except :
+    print(f"Unexpected error: {sys.exc_info}")
 
 finally:
-    if transport is not None: transport.close()
-    if channel is not None: channel.close()
+    if transport is not None:
+        transport.close()
+    if CHANNEL is not None:
+        CHANNEL.close()
