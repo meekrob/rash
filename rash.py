@@ -19,7 +19,7 @@ import sys
 import time
 from datetime import datetime
 import getpass
-from typing import Any
+from typing import Any,TypedDict
 import paramiko
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
@@ -51,12 +51,8 @@ def main():
     if DO_TESTS_ON_CONNECT:
         for shell_test in SHELL_TESTS:
             cmd_number = run_command(cmd_number, session_vars,
-                                    description=shell_test['desc'],
                                     command=shell_test['cmd'],
-                                    expected_stdout=shell_test.get("expected_stdout"),
-                                    expected_stderr=shell_test.get("expected_stderr"),
-                                    expected_exit=shell_test.get("expected_exit"),
-                                    test=True)
+                                    test=shell_test)
 
 
     # INTERACTIVE LOOP
@@ -127,17 +123,20 @@ def read_channel_with_timeout(channel, sentinel, timeout=5.0):
             time.sleep(0.05)
     return buffer
 
+class ShellTest(TypedDict):
+    """
+    Wrapper for a test of a shell command
+    """
+    desc: str
+    cmd: str
+    expected_exit: int
 
 # --- Run command using source history-cmd# ---
 def run_command(
     cmd_number:int,
-    session_vars,
+    session_vars:dict,
     command:str,
-    test: bool = False,
-    description: str|None =     None,
-    expected_exit: int|None =   None,
-    expected_stdout: str|None = None,
-    expected_stderr: str|None = None,
+    test: ShellTest|None
 ):
     """
     Basic function for running a command
@@ -153,8 +152,8 @@ def run_command(
     status_file = f"{session_dir}/status-cmd{cmd_number}"
     sentinel    = f"__DONE_{cmd_number}__"
 
-    if test:
-        print(f"\n--- Test #{cmd_number}: {description} ---")
+    if test is not None:
+        print(f"\n--- Test #{cmd_number}: {test['desc']} ---")
 
     # Write the user command to history
     escaped_cmd = command.replace('"', '\\"')
@@ -197,17 +196,17 @@ def run_command(
     print(f"Duration (including file reads): {duration:.2f} sec")
 
     # --- Automatic pass/fail checks (verbose) ---
-    if test:
+    if test is not None:
         test_passed = True
-        if expected_exit is not None and exit_status != expected_exit:
+        if test['expected_exit'] is not None and exit_status != test['expected_exit']:
             test_passed = False
-            print(f"FAIL: Expected exit status {expected_exit}, got {exit_status}")
-        if expected_stdout is not None and expected_stdout not in stdout_text:
+            print(f"FAIL: Expected exit status {test['expected_exit']}, got {exit_status}")
+        if test['expected_stdout'] is not None and test['expected_stdout'] not in stdout_text:
             test_passed = False
-            print(f"FAIL: Expected stdout to contain: {expected_stdout}")
-        if expected_stderr is not None and expected_stderr not in stderr_text:
+            print(f"FAIL: Expected stdout to contain: {test['expected_stdout']}")
+        if test['expected_stderr'] is not None and test['expected_stderr'] not in stderr_text:
             test_passed = False
-            print(f"FAIL: Expected stderr to contain: {expected_stderr}")
+            print(f"FAIL: Expected stderr to contain: {test['expected_stderr']}")
         if test_passed:
             print("PASS")
 
@@ -303,7 +302,6 @@ def read_remote_file(sftp, remote_path, timeout=10.0):
                 raise TimeoutError(f"File {remote_path} not found in {timeout:.1f} sec") from exc
             time.sleep(0.05)
 
-
 SHELL_TESTS = [
     {"desc": "Check whoami",                        "cmd": "whoami",            "expected_exit": 0},
     {"desc": "Check working directory",             "cmd": "pwd",               "expected_exit": 0},
@@ -368,7 +366,6 @@ def interactive_loop(cmd_number, session_vars):
         cmd_number = run_command(
             cmd_number,
             session_vars,
-            description="interactive",
             command=user_cmd,
             test=False
         )
