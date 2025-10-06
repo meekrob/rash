@@ -36,7 +36,7 @@ def main():
     host = "riviera.colostate.edu"
     username = "dking"
     # passwordless login
-    channel,ssh = open_connection(host, username, "~/.ssh/id_rsa")
+    channel,ssh = open_connection(host, username, "~/.ssh/id_ed25519")
     session_vars = initialize_session(channel, ssh)
 
     # extract vars for session
@@ -227,10 +227,11 @@ def open_connection(host:str,
     pkey = None
     if key_file is not None and os.path.exists(key_file):
         try:
-            pkey = paramiko.RSAKey.from_private_key_file(key_file)
+            pkey = paramiko.Ed25519Key.from_private_key_file(key_file)
         except paramiko.PasswordRequiredException:
             passphrase = getpass.getpass(f"Enter passphrase for {key_file}: ")
-            pkey = paramiko.RSAKey.from_private_key_file(key_file, password=passphrase)
+            print(f"You entered {passphrase=}", file=sys.stderr)
+            pkey = paramiko.Ed25519Key.from_private_key_file(key_file, password=passphrase)
 
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
