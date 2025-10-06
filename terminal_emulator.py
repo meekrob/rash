@@ -5,6 +5,7 @@ terminal_emulator - light weight ssh interface using paramiko
 import sys
 import time
 import os
+import logging
 import getpass
 import select
 import paramiko
@@ -66,19 +67,27 @@ try:
     # Setup transport (shared connection)
     transport = paramiko.Transport((HOST, 22))
 
-        # --- Try key-based authentication first ---
+    # --- Try key-based authentication first ---
+    AUTHENTICATED = False
     try:
         pkey = paramiko.RSAKey.from_private_key_file(private_key_path)
         transport.connect(username=USERNAME, pkey=pkey)
         print(f"Authenticated with private key {private_key_path}", file=sys.stderr)
-    except Exception as key_error:
-        print(f"Key authentication failed: {key_error}", file=sys.stderr)
-
+        AUTHENTICATED = True
+    except IOError as ioerror:
+        print(f"could not read key file: {private_key_path}", file=sys.stderr)
+        AUTHENTICATED = False
+    except paramiko.PasswordRequiredException as e:
+        print(f"Passphrase required for key file: {e}", file=sys.stderr)
+        AUTHENTICATED = False
+    except paramiko.SSHException as e:
+        print(f"Authenticated FAILED with private key {private_key_path}", file=sys.stderr)
+        AUTHENTICATED = False
+    finally:
         # --- Fall back to password authentication ---
-        password = getpass.getpass(GETPASS_PROMPT)
-        transport.connect(username=USERNAME, password=password)
-
-
+        if not AUTHENTICATED:
+            password = getpass.getpass(GETPASS_PROMPT)
+            transport.connect(username=USERNAME, password=password)
 
     CHANNEL = None
     try:
@@ -122,8 +131,9 @@ except paramiko.AuthenticationException as e:
     print(f"Authentication Failed: {e}", file=sys.stderr)
     #sys.exit(1)
 
-except :
-    print(f"Unexpected error: {sys.exc_info}")
+except Exception as e:
+    logging.exception(e)
+    raise
 
 finally:
     if transport is not None:
