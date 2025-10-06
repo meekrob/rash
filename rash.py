@@ -18,8 +18,9 @@ import os
 import sys
 import time
 from datetime import datetime
+from collections import defaultdict
 import getpass
-from typing import Any,TypedDict
+from typing import Any,TypedDict,Optional
 import paramiko
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
@@ -130,6 +131,36 @@ class ShellTest(TypedDict):
     desc: str
     cmd: str
     expected_exit: int
+    expected_stdout: Optional[str]
+    expected_stderr: Optional[str]
+
+def formulate_command(command:str, session_dir: str, cmd_number: int) -> dict:
+    """
+    formulate_command - resolve paths of history/output files and write command strings
+    """
+    hist_file   = f"{session_dir}/history-cmd{cmd_number}"
+    stdout_file = f"{session_dir}/stdout-cmd{cmd_number}"
+    stderr_file = f"{session_dir}/stderr-cmd{cmd_number}"
+    status_file = f"{session_dir}/status-cmd{cmd_number}"
+    sentinel    = f"__DONE_{cmd_number}__"
+
+    # Write the user command to history
+    escaped_cmd = command.replace('"', '\\"')
+    history_cmd = f'echo "{escaped_cmd}" > {hist_file}\n'
+
+
+    exec_cmd = ''.join([ f"source {hist_file} > {stdout_file}",
+                         f" 2> {stderr_file}; ",
+                         f"echo $? > {status_file}; ",
+                         f"echo {sentinel}\n"])
+
+    return {'history': history_cmd.encode(),
+            'exec': exec_cmd.encode(),
+            'stdout_file': stdout_file,
+            'stderr_file': stderr_file,
+            'status_file': status_file,
+            'sentinel': sentinel
+            }
 
 # --- Run command using source history-cmd# ---
 def run_command(
@@ -142,71 +173,63 @@ def run_command(
     Basic function for running a command
     """
 
-    session_dir = session_vars['session_dir']
     channel = session_vars['channel']
     sftp = session_vars['sftp']
-
-    hist_file   = f"{session_dir}/history-cmd{cmd_number}"
-    stdout_file = f"{session_dir}/stdout-cmd{cmd_number}"
-    stderr_file = f"{session_dir}/stderr-cmd{cmd_number}"
-    status_file = f"{session_dir}/status-cmd{cmd_number}"
-    sentinel    = f"__DONE_{cmd_number}__"
 
     if test is not None:
         print(f"\n--- Test #{cmd_number}: {test['desc']} ---")
 
-    # Write the user command to history
-    escaped_cmd = command.replace('"', '\\"')
-    channel.send(f'echo "{escaped_cmd}" > {hist_file}\n'.encode())
-    time.sleep(0.05)
+    # transfer user command to history file, make 'source' command
+    commands = formulate_command(command, session_vars['session_dir'], cmd_number)
+
+    # write history
+    channel.send(commands['history'])
+    time.sleep(.05)
 
     # Execute the command
-    exec_cmd = ''.join([ f"source {hist_file} > {stdout_file}",
-                         f" 2> {stderr_file}; ",
-                         f"echo $? > {status_file}; ",
-                         f"echo {sentinel}\n"])
     start_time = time.time()
-    channel.send(exec_cmd.encode())
+    channel.send(commands['exec'])
 
     # Stream output while running
-    stream_command_output(sftp, stdout_file, stderr_file, status_file)
+    stream_command_output(sftp, commands['stdout_file'],
+                          commands['stderr_file'],
+                          commands['status_file'])
 
     # Wait until sentinel appears in the channel
     timeout=10.0
     #command_timedout = False
-    buffer = read_channel_with_timeout(channel, sentinel, timeout=timeout)
-    if sentinel not in buffer:
+    buffer = read_channel_with_timeout(channel, commands['sentinel'], timeout=timeout)
+    if commands['sentinel'] not in buffer:
         print(f"[WARNING] Command output exceeded {timeout}")
         #command_timedout = True
 
     # Read outputs
-    stdout_text = read_remote_file(sftp, stdout_file).strip()
-    stderr_text = read_remote_file(sftp, stderr_file).strip()
+    stdout_text = read_remote_file(sftp, commands['stdout_file']).strip()
+    stderr_text = read_remote_file(sftp, commands['stderr_file']).strip()
     try:
-        exit_status = int(read_remote_file(sftp, status_file).strip())
+        exit_status = int(read_remote_file(sftp, commands['status_file']).strip())
     except ValueError:
         exit_status = None
-
-    duration = time.time() - start_time
 
     # Always print main outputs
     print(f"STDOUT[{len(stdout_text)} bytes]")
     print(f"STDERR[{len(stderr_text)} bytes]")
     print(f"Exit status: {exit_status}")
-    print(f"Duration (including file reads): {duration:.2f} sec")
+    print(f"Duration (including file reads): {time.time() - start_time:.2f} sec")
 
     # --- Automatic pass/fail checks (verbose) ---
     if test is not None:
+        tested = defaultdict(lambda: None, test)
         test_passed = True
-        if test['expected_exit'] is not None and exit_status != test['expected_exit']:
+        if tested['expected_exit'] is not None and exit_status != tested['expected_exit']:
             test_passed = False
-            print(f"FAIL: Expected exit status {test['expected_exit']}, got {exit_status}")
-        if test['expected_stdout'] is not None and test['expected_stdout'] not in stdout_text:
+            print(f"FAIL: Expected exit status {tested['expected_exit']}, got {exit_status}")
+        if tested['expected_stdout'] is not None and tested['expected_stdout'] not in stdout_text:
             test_passed = False
-            print(f"FAIL: Expected stdout to contain: {test['expected_stdout']}")
-        if test['expected_stderr'] is not None and test['expected_stderr'] not in stderr_text:
+            print(f"FAIL: Expected stdout to contain: {tested['expected_stdout']}")
+        if tested['expected_stderr'] is not None and tested['expected_stderr'] not in stderr_text:
             test_passed = False
-            print(f"FAIL: Expected stderr to contain: {test['expected_stderr']}")
+            print(f"FAIL: Expected stderr to contain: {tested['expected_stderr']}")
         if test_passed:
             print("PASS")
 
