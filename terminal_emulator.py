@@ -6,15 +6,15 @@ import getpass
 import select
 import paramiko
 
-#host = 'login-ci.rc.colorado.edu'
-host = 'riviera.colostate.edu'
-#username = 'dcking@colostate.edu'
-username = 'dking'
-#password = getpass.getpass("Enter password with duo prompt (password, push) or (password, hardwareKey): ")
+#HOST = 'login-ci.rc.colorado.edu'
+HOST = 'riviera.colostate.edu'
+#USERNAME = 'dcking@colostate.edu'
+USERNAME = 'dking'
+#PASSWORD = getpass.getpass("Enter password with duo prompt (password, push) or (password, hardwareKey): ")
 # Path to your private key (default: ~/.ssh/id_rsa)
 private_key_path = os.path.expanduser("~/.ssh/id_rsa")
 
-transport = None
+TRANSPORT = None
 
 def interactive_shell(channel: paramiko.Channel):
     """Simple interactive loop to send user input and print server output."""
@@ -57,21 +57,21 @@ def send_command(cmd: str, channel: paramiko.Channel, delay: float = 0.5) -> str
 
 try:
     # Setup transport (shared connection)
-    transport = paramiko.Transport((host, 22))
-    
+    transport = paramiko.Transport((HOST, 22))
+
         # --- Try key-based authentication first ---
     try:
         pkey = paramiko.RSAKey.from_private_key_file(private_key_path)
-        transport.connect(username=username, pkey=pkey)
+        transport.connect(username=USERNAME, pkey=pkey)
         print(f"Authenticated with private key {private_key_path}", file=sys.stderr)
     except Exception as key_error:
         print(f"Key authentication failed: {key_error}", file=sys.stderr)
 
         # --- Fall back to password authentication ---
         password = getpass.getpass("Enter password with duo prompt (password, push) or (password, hardwareKey): ")
-        transport.connect(username=username, password=password)
+        transport.connect(username=USERNAME, password=password)
 
-    
+
 
     channel = None
     try:
@@ -83,7 +83,7 @@ try:
         print("invoke_shell()", end="", file=sys.stderr)
         channel.invoke_shell()
         print(file=sys.stderr)
-        
+
 
         # (Optional) read initial prompt or MOTD
         time.sleep(0.5)
@@ -91,7 +91,7 @@ try:
             banner = channel.recv(4096).decode('utf-8')
             print(banner)
         interactive_shell(channel)
-        
+
         """ 
         # Now send multiple commands
         output1 = send_command('whoami', channel)
@@ -103,10 +103,6 @@ try:
         output3 = send_command('ls -l', channel)
         print("Output 3:", output3, file=sys.stderr) """
 
- 
-        
-            
-        
     except paramiko.SSHException as e:
         print(f"SSH error: {e}")
         raise
