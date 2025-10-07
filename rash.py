@@ -20,13 +20,68 @@ import time
 from datetime import datetime
 from collections import defaultdict
 import getpass
+import hashlib,base64 # to get fingerprint from publickey
 from typing import Any,TypedDict,Optional
 import paramiko
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
 
 
-DO_TESTS_ON_CONNECT = True
+DO_TESTS_ON_CONNECT = False
+
+def fingerprint_from_pubkey_file(pub_file: str) -> Optional[str]:
+    """
+    Compute a SHA256-style fingerprint from any OpenSSH public key file.
+    Works for ssh-ed25519, ssh-rsa, ecdsa-sha2-*, ssh-dss, etc.
+    """
+    try:
+        with open(pub_file, "r") as f:
+            parts = f.read().strip().split()
+            if len(parts) < 2:
+                raise ValueError("Invalid public key format")
+
+            key_type, key_b64 = parts[:2]
+            key_data = base64.b64decode(key_b64.encode("ascii"))
+            digest = hashlib.sha256(key_data).digest()
+            fingerprint = base64.b64encode(digest).decode("ascii").rstrip("=")
+            return f"SHA256:{fingerprint}"
+
+    except FileNotFoundError:
+        print(f"Public key file not found: {pub_file}", file=sys.stderr)
+    except (ValueError, IndexError, base64.binascii.Error) as e:
+        print(f"Failed to parse {pub_file}: {e}", file=sys.stderr)
+
+    return None
+
+def find_public_key_file(private_key_file: str) -> str:
+    """
+    Given the private_key file path, assume the public key is the same with ".pub
+    """
+    private_key_path = os.path.expanduser(private_key_file)
+    public_key_path = private_key_path + ".pub"
+
+    if os.path.exists(public_key_path):
+        return public_key_path
+    
+    raise FileNotFoundError
+
+def find_agent_key_by_pub_fingerprint(private_file: str):
+    """
+    See if the user's provided key file matches a key in the
+    SSH agent so they don't have to provide a passphrase
+    """
+    pub_file = find_public_key_file(private_file)
+    target_fp = fingerprint_from_pubkey_file(pub_file)
+    if not target_fp:
+        return None
+
+    agent = paramiko.Agent()
+    for key in agent.get_keys():
+        digest = base64.b64encode(hashlib.sha256(key.asbytes()).digest()).decode("ascii").rstrip("=")
+        agent_fp = f"SHA256:{digest}"
+        if agent_fp == target_fp:
+            return key
+    return None
 
 def main():
     """
@@ -37,7 +92,9 @@ def main():
     host = "riviera.colostate.edu"
     username = "dking"
     # passwordless login
-    channel,ssh = open_connection(host, username, "~/.ssh/id_ed25519")
+    private_key_file = "~/.ssh/id_ed25519"
+    public_key_file = os.path.expanduser(private_key_file) + ".pub"
+    channel,ssh = open_connection(host, username, private_key_file)
     session_vars = initialize_session(channel, ssh)
 
     # extract vars for session
@@ -252,7 +309,6 @@ def open_connection(host:str,
             pkey = paramiko.Ed25519Key.from_private_key_file(key_file)
         except paramiko.PasswordRequiredException:
             passphrase = getpass.getpass(f"Enter passphrase for {key_file}: ")
-            print(f"You entered {passphrase=}", file=sys.stderr)
             pkey = paramiko.Ed25519Key.from_private_key_file(key_file, password=passphrase)
 
     ssh = paramiko.SSHClient()
