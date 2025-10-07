@@ -20,7 +20,9 @@ import time
 from datetime import datetime
 from collections import defaultdict
 import getpass
-import hashlib,base64 # to get fingerprint from publickey
+# libs to get fingerprint from publickey
+import hashlib
+import base64
 from typing import Any,TypedDict,Optional
 import paramiko
 from prompt_toolkit import PromptSession
@@ -35,12 +37,13 @@ def fingerprint_from_pubkey_file(pub_file: str) -> Optional[str]:
     Works for ssh-ed25519, ssh-rsa, ecdsa-sha2-*, ssh-dss, etc.
     """
     try:
-        with open(pub_file, "r") as f:
+        with open(pub_file, "r", encoding="ascii") as f:
             parts = f.read().strip().split()
             if len(parts) < 2:
                 raise ValueError("Invalid public key format")
 
             key_type, key_b64 = parts[:2]
+            print(f"Detected key type {key_type} from {pub_file}", file=sys.stderr)
             key_data = base64.b64decode(key_b64.encode("ascii"))
             digest = hashlib.sha256(key_data).digest()
             fingerprint = base64.b64encode(digest).decode("ascii").rstrip("=")
@@ -62,7 +65,7 @@ def find_public_key_file(private_key_file: str) -> str:
 
     if os.path.exists(public_key_path):
         return public_key_path
-    
+
     raise FileNotFoundError
 
 def find_agent_key_by_pub_fingerprint(private_file: str):
@@ -77,7 +80,9 @@ def find_agent_key_by_pub_fingerprint(private_file: str):
 
     agent = paramiko.Agent()
     for key in agent.get_keys():
-        digest = base64.b64encode(hashlib.sha256(key.asbytes()).digest()).decode("ascii").rstrip("=")
+        digest = base64.b64encode(
+            hashlib.sha256(
+                key.asbytes()).digest()).decode("ascii").rstrip("=")
         agent_fp = f"SHA256:{digest}"
         if agent_fp == target_fp:
             return key
@@ -93,7 +98,6 @@ def main():
     username = "dking"
     # passwordless login
     private_key_file = "~/.ssh/id_ed25519"
-    public_key_file = os.path.expanduser(private_key_file) + ".pub"
     channel,ssh = open_connection(host, username, private_key_file)
     session_vars = initialize_session(channel, ssh)
 
