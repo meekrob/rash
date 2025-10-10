@@ -68,7 +68,7 @@ def find_public_key_file(private_key_file: str) -> str:
 
     raise FileNotFoundError
 
-def find_agent_key_by_pub_fingerprint(private_file: str):
+def find_agent_key_by_pub_fingerprint(private_file: str) -> paramiko.AgentKey | None:
     """
     See if the user's provided key file matches a key in the
     SSH agent so they don't have to provide a passphrase
@@ -299,28 +299,33 @@ def run_command(
 
 def open_connection(host:str,
                username:str,
-               key_file:str|None) -> tuple[paramiko.Channel, paramiko.SSHClient]:
+               private_key_path:str|None) -> tuple[paramiko.Channel, paramiko.SSHClient]:
     """
     open_connection - connect using password or key file
     """
     # --- SSH key authentication ---
     #key_file = os.path.expanduser("~/.ssh/id_rsa")
-    if key_file is not None:
-        key_file = os.path.expanduser(key_file)
-    pkey = None
-    if key_file is not None and os.path.exists(key_file):
+    if private_key_path is not None:
+        private_key_path = os.path.expanduser(private_key_path)
+
+    pkey:paramiko.AgentKey|None = None
+
+    if private_key_path is not None and os.path.exists(private_key_path):
         try:
-            pkey = paramiko.Ed25519Key.from_private_key_file(key_file)
+            #pkey = paramiko.Ed25519Key.from_private_key_file(private_key_path)
+            # try to determine if there is a corresponding key in the key chain, 
+            # using the given path + ".pub"
+            pkey = find_agent_key_by_pub_fingerprint(private_key_path)
         except paramiko.PasswordRequiredException:
-            passphrase = getpass.getpass(f"Enter passphrase for {key_file}: ")
-            pkey = paramiko.Ed25519Key.from_private_key_file(key_file, password=passphrase)
+            passphrase = getpass.getpass(f"Enter passphrase for {private_key_path}: ")
+            pkey = paramiko.Ed25519Key.from_private_key_file(private_key_path, password=passphrase)
 
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     if pkey:
         ssh.connect(host, username=username, pkey=pkey)
     else:
-        password = getpass.getpass("Password: ")
+        password = getpass.getpass("Password (no pkey): ")
         ssh.connect(host, username=username, password=password)
 
     # --- Open persistent shell ---
