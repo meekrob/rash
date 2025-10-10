@@ -97,7 +97,7 @@ def main():
     host = "riviera.colostate.edu"
     username = "dking"
     # passwordless login
-    private_key_file = "~/.ssh/id_ed25519"
+    private_key_file = "" # "~/.ssh/id_ed25519"
     channel,ssh = open_connection(host, username, private_key_file)
     session_vars = initialize_session(channel, ssh)
 
@@ -312,13 +312,15 @@ def open_connection(host:str,
 
     if private_key_path is not None and os.path.exists(private_key_path):
         try:
-            #pkey = paramiko.Ed25519Key.from_private_key_file(private_key_path)
-            # try to determine if there is a corresponding key in the key chain, 
+            pkey = paramiko.Ed25519Key.from_private_key_file(private_key_path)
+        except paramiko.PasswordRequiredException:
+            # first, try to determine if there is a corresponding key in the key chain,
             # using the given path + ".pub"
             pkey = find_agent_key_by_pub_fingerprint(private_key_path)
-        except paramiko.PasswordRequiredException:
-            passphrase = getpass.getpass(f"Enter passphrase for {private_key_path}: ")
-            pkey = paramiko.Ed25519Key.from_private_key_file(private_key_path, password=passphrase)
+            if pkey is None: # none found or there was a problem
+                passphrase = getpass.getpass(f"Enter passphrase for {private_key_path}: ")
+                pkey = paramiko.Ed25519Key.from_private_key_file(private_key_path,
+                                                                 password=passphrase)
 
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
