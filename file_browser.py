@@ -1,17 +1,15 @@
 """
-FileBrowser: Qt-based Filebrowser
+file_browser: Qt-based Filebrowser
 """
-from PySide6.QtWidgets import QApplication, QTreeView, QMenu, QFileSystemModel
+from PySide6.QtWidgets import QTreeView, QMenu, QFileSystemModel
 from PySide6.QtGui import QAction
 from PySide6.QtCore import Qt, QDir
+from sftp_model import SFTPFileModel
 
 class FileBrowser(QTreeView):
-    def __init__(self):
-        super().__init__()
-        self.model = QFileSystemModel()
-        self.model.setRootPath(QDir.homePath())
-        self.setModel(self.model)
-        self.setRootIndex(self.model.index(QDir.homePath()))
+    def __init__(self, model, parent=None):
+        super().__init__(parent)
+        self.setModel(model)
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self.open_menu)
 

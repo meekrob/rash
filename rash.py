@@ -29,8 +29,8 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
 # File browser
 from PySide6.QtWidgets import QApplication, QMainWindow
-from FileBrowser import FileBrowser
-
+from file_browser import FileBrowser
+from sftp_model import SFTPFileModel
 
 DO_TESTS_ON_CONNECT = False
 
@@ -93,13 +93,16 @@ def find_agent_key_by_pub_fingerprint(private_file: str) -> paramiko.AgentKey | 
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, session_vars):
         super().__init__()
         self.setWindowTitle("Remote File Browser")
         self.setGeometry(200, 200, 900, 600)
+        self.session_vars = session_vars
 
         # Initialize file browser widget
-        self.browser = FileBrowser()
+        sftp = session_vars['sftp']
+        model = SFTPFileModel(sftp_client=sftp) # root_path=session_vars['session_dir']
+        self.browser = FileBrowser(model)
         self.setCentralWidget(self.browser)
 
 def main():
@@ -107,17 +110,14 @@ def main():
     Set connection info, optionally run shell tests, and enter interactive session
     """
 
-    app = QApplication([])
-    window = MainWindow()
-    window.show()
-    sys.exit(app.exec())
+
 
 
     # --- Connection info ---
     host = "riviera.colostate.edu"
     username = "dking"
     # passwordless login
-    private_key_file = "" # "~/.ssh/id_ed25519"
+    private_key_file = "~/.ssh/id_ed25519"
     channel,ssh = open_connection(host, username, private_key_file)
     session_vars = initialize_session(channel, ssh)
 
@@ -127,6 +127,10 @@ def main():
     #home_dir = session_vars['home_dir']
     #server_prompt = session_vars['server_prompt']
 
+    app = QApplication([])
+    window = MainWindow(session_vars = session_vars)
+    window.show()
+    sys.exit(app.exec())
 
     # --- TESTS of basic operation ---
     cmd_number = 1
