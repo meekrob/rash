@@ -27,6 +27,9 @@ from typing import Any,TypedDict,Optional
 import paramiko
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
+# File browser
+from PySide6.QtWidgets import QApplication, QMainWindow
+from FileBrowser import FileBrowser
 
 
 DO_TESTS_ON_CONNECT = False
@@ -88,10 +91,27 @@ def find_agent_key_by_pub_fingerprint(private_file: str) -> paramiko.AgentKey | 
             return key
     return None
 
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Remote File Browser")
+        self.setGeometry(200, 200, 900, 600)
+
+        # Initialize file browser widget
+        self.browser = FileBrowser()
+        self.setCentralWidget(self.browser)
+
 def main():
     """
     Set connection info, optionally run shell tests, and enter interactive session
     """
+
+    app = QApplication([])
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec())
+
 
     # --- Connection info ---
     host = "riviera.colostate.edu"
