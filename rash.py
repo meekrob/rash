@@ -27,8 +27,10 @@ from typing import Any,TypedDict,Optional
 import paramiko
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
+# to run terminal and GUI at the same time
+import threading
 # File browser
-from PySide6.QtWidgets import QApplication, QMainWindow
+from PySide6.QtWidgets import QApplication, QMainWindow,QLabel
 from file_browser import FileBrowser
 from sftp_model import SFTPFileModel
 
@@ -105,13 +107,26 @@ class MainWindow(QMainWindow):
         self.browser = FileBrowser(model)
         self.setCentralWidget(self.browser)
 
+def run_gui(session_vars):
+    app = QApplication(sys.argv)
+    window = MainWindow(session_vars = session_vars)
+    window.show()
+    label = QLabel("GUI running — terminal still active")
+    label.show()
+    app.exec_()
+
+def start_gui(session_vars):
+    gui_thread = threading.Thread(
+        target=run_gui, args=(session_vars,), daemon=True)
+    gui_thread.start()
+    return gui_thread
+
+
+
 def main():
     """
     Set connection info, optionally run shell tests, and enter interactive session
     """
-
-
-
 
     # --- Connection info ---
     host = "riviera.colostate.edu"
@@ -127,10 +142,9 @@ def main():
     #home_dir = session_vars['home_dir']
     #server_prompt = session_vars['server_prompt']
 
-    app = QApplication([])
-    window = MainWindow(session_vars = session_vars)
-    window.show()
-    sys.exit(app.exec())
+
+    # Start GUI in a separate thread
+    start_gui(session_vars)
 
     # --- TESTS of basic operation ---
     cmd_number = 1
